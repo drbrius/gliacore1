@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Metadata and settings for a Glia Core user",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "tier": { "type": "string", "enum": ["Free", "Pro", "Quantum"] },
+        "goal": { "type": "string" },
+        "avatar": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "name", "tier"]
+    },
+    "Neuron": {
+      "title": "Neural Node",
+      "description": "A single data node in the user's neural network",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "type": { "type": "string", "enum": ["Insight", "Project", "Contact", "Research", "System"] },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "metadata": { "type": "object" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "title", "content"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Individual user profiles"
+    },
+    "neurons/{neuronId}": {
+      "schema": "Neuron",
+      "description": "Global pool of neurons secured by owner ID"
+    }
+  }
+}

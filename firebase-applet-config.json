@@ -1,0 +1,171 @@
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  onSnapshot,
+  serverTimestamp,
+  orderBy,
+  getDocFromServer
+} from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
+import { Neuron, UserProfile, AuthState, SubscriptionTier } from '../types';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+export const firebaseService = {
+  // Test connection as required
+  async testConnection() {
+    try {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+    } catch (error) {
+      if(error instanceof Error && error.message.includes('the client is offline')) {
+        console.error("Please check your Firebase configuration.");
+      }
+    }
+  },
+
+  // User Profile
+  async getUserProfile(userId: string): Promise<UserProfile | null> {
+    const path = `users/${userId}`;
+    try {
+      const docSnap = await getDoc(doc(db, 'users', userId));
+      if (docSnap.exists()) {
+        return docSnap.data() as UserProfile;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
+  },
+
+  async createUserProfile(userId: string, email: string, name: string, tier: SubscriptionTier = 'Free'): Promise<UserProfile> {
+    const path = `users/${userId}`;
+    const profile: any = {
+      email,
+      name,
+      tier,
+      goal: '',
+      avatar: '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    try {
+      await setDoc(doc(db, 'users', userId), profile);
+      return profile;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      throw error;
+    }
+  },
+
+  async updateUserProfile(userId: string, data: Partial<UserProfile>) {
+    const path = `users/${userId}`;
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  },
+
+  // Neurons
+  subscribeToNeurons(userId: string, callback: (neurons: Neuron[]) => void) {
+    const path = 'neurons';
+    const q = query(
+      collection(db, 'neurons'), 
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+
+    return onSnapshot(q, (snapshot) => {
+      const neurons = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Neuron[];
+      callback(neurons);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+  },
+
+  async addNeuron(userId: string, neuron: Omit<Neuron, 'id' | 'createdAt' | 'updatedAt'>) {
+    const path = 'neurons';
+    try {
+      const newDoc = doc(collection(db, 'neurons'));
+      await setDoc(newDoc, {
+        ...neuron,
+        userId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return newDoc.id;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    }
+  },
+
+  async updateNeuron(neuronId: string, data: Partial<Neuron>) {
+    const path = `neurons/${neuronId}`;
+    try {
+      await updateDoc(doc(db, 'neurons', neuronId), {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  },
+
+  async deleteNeuron(neuronId: string) {
+    const path = `neurons/${neuronId}`;
+    try {
+      await deleteDoc(doc(db, 'neurons', neuronId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  }
+};
